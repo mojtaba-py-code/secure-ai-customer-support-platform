@@ -1,0 +1,44 @@
+# --- secrets & local configuration (never commit) ---
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- runtime data (databases, vector index, dev mailbox, generated demo credentials) ---
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# --- local tool settings ---
+.claude/
+
+# --- editors / os ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

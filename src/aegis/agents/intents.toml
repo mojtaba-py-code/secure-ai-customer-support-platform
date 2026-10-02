@@ -1,0 +1,133 @@
+# Intent registry.
+#
+# Adding an intent is a data change: add a block here, list the tools it may use (least
+# privilege: only what that kind of request needs) and the knowledge categories to search.
+# The classifier's JSON schema, the rule-based fallback classifier, the tool allow-list and the
+# retrieval filters are all derived from this file, and it is validated at start-up (unknown
+# tools or categories stop the process).
+#
+# request_human_agent is added to every intent automatically.
+
+[[intent]]
+name = "order_tracking"
+description = "Where an order is, delivery status or date, tracking numbers, late or missing packages."
+default_priority = "medium"
+tools = ["get_order_status", "list_recent_orders", "get_order_details"]
+knowledge = ["shipping_policy", "faq"]
+keywords = [
+  "where is my order", "track", "tracking", "shipped", "delivery", "delivered", "arrive", "arrived",
+  "package", "parcel", "order status", "when will", "not arrived", "hasn't arrived", "late", "courier",
+]
+
+[[intent]]
+name = "refund_request"
+description = "Asking for a refund or return, refund eligibility, or the status of a refund."
+default_priority = "medium"
+tools = ["check_refund_eligibility", "get_refund_status", "request_refund", "get_order_details", "list_recent_orders"]
+knowledge = ["refund_policy", "faq"]
+keywords = [
+  "refund", "money back", "return", "returning", "reimburse", "refunded", "refund status", "send it back",
+  "exchange", "damaged", "defective", "wrong item",
+]
+
+[[intent]]
+name = "payment_problem"
+description = "Charges, failed or declined payments, double charges, billing and invoices."
+default_priority = "high"
+tools = ["check_payment_status", "get_order_details", "get_refund_status", "list_recent_orders"]
+knowledge = ["payment_policy", "faq"]
+keywords = [
+  "charged twice", "double charge", "charged", "payment failed", "card declined", "declined", "charge",
+  "billing", "invoice", "payment", "pay", "overcharged", "receipt",
+]
+
+[[intent]]
+name = "cancellation"
+description = "Cancelling an order or asking whether an order can still be cancelled."
+default_priority = "medium"
+tools = ["get_order_status", "cancel_order", "list_recent_orders"]
+knowledge = ["cancellation_policy", "refund_policy"]
+keywords = ["cancel", "cancellation", "stop my order", "don't want the order", "changed my mind", "cancelled"]
+
+[[intent]]
+name = "shipping_question"
+description = "General shipping questions: costs, times, destinations, carriers, express delivery."
+default_priority = "low"
+tools = ["get_order_status"]
+knowledge = ["shipping_policy", "faq"]
+keywords = [
+  "shipping cost", "shipping time", "how long does shipping", "ship to", "international", "express",
+  "delivery options", "free shipping", "shipping", "carrier", "customs",
+]
+
+[[intent]]
+name = "product_question"
+description = "Product features, compatibility, setup, availability, price or warranty coverage."
+default_priority = "low"
+tools = ["get_product_information"]
+knowledge = ["product_docs", "warranty", "faq"]
+keywords = [
+  "product", "spec", "specs", "compatible", "compatibility", "battery", "warranty", "set up", "setup",
+  "manual", "does it support", "in stock", "available", "price", "soundbar", "camera", "router", "headphones",
+]
+
+[[intent]]
+name = "account_problem"
+description = "Sign-in trouble, password resets, account settings, e-mail or profile changes."
+default_priority = "medium"
+tools = ["get_customer_profile", "create_support_ticket"]
+knowledge = ["account_policy", "faq"]
+keywords = [
+  "account", "login", "log in", "sign in", "signin", "password", "reset my password", "email address",
+  "profile", "locked out", "two-factor", "2fa", "verification code",
+]
+
+[[intent]]
+name = "technical_problem"
+description = "A device or the website/app not working: errors, faults, crashes, setup failures."
+default_priority = "medium"
+tools = ["get_product_information", "create_support_ticket", "get_ticket_status"]
+knowledge = ["product_docs", "warranty", "faq"]
+keywords = [
+  "not working", "doesn't work", "does not work", "broken", "error", "won't turn on", "bug", "crash",
+  "crashes", "defect", "stopped working", "firmware", "keeps disconnecting", "no sound", "won't connect",
+]
+
+[[intent]]
+name = "security_problem"
+description = "Account compromise, unauthorised orders or charges, fraud, phishing, suspicious logins."
+default_priority = "urgent"
+always_escalate = true
+escalation_reason = "account_security"
+tools = []
+knowledge = ["account_policy"]
+keywords = [
+  "hacked", "unauthorized", "unauthorised", "someone else", "fraud", "stolen", "phishing",
+  "suspicious login", "compromised", "didn't make this purchase", "did not make this purchase",
+  "scam", "identity theft",
+]
+
+[[intent]]
+name = "complaint"
+description = "Dissatisfaction with the service, a product or an experience; requests for a manager."
+default_priority = "high"
+tools = ["create_support_ticket", "list_recent_orders", "get_order_status"]
+knowledge = ["faq"]
+keywords = [
+  "complaint", "complain", "terrible", "unacceptable", "worst", "disappointed", "angry", "furious",
+  "manager", "awful", "horrible", "ridiculous", "useless", "fed up",
+]
+
+[[intent]]
+name = "general_question"
+description = "Anything else about the store: opening hours, contact options, policies, privacy, tickets."
+default_priority = "low"
+tools = ["get_ticket_status", "get_customer_profile"]
+knowledge = [
+  "faq", "privacy_policy", "account_policy", "shipping_policy", "refund_policy", "warranty",
+  "payment_policy", "cancellation_policy",
+]
+keywords = [
+  "hours", "contact", "phone number", "opening", "policy", "question", "ticket", "privacy",
+  "personal data", "delete my data", "gdpr", "store", "help",
+]

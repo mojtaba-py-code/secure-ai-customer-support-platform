@@ -1,0 +1,276 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aegis-support"
+version = "1.0.0"
+description = "AegisSupport AI - a secure, LLM-powered customer support platform: grounded RAG answers, authorization-enforced tool calling, human handoff and defence-in-depth against prompt injection."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mojtaba Karimi" }]
+requires-python = ">=3.12"
+keywords = ["customer-support", "llm", "claude", "rag", "agents", "prompt-injection", "fastapi", "security"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+dependencies = [
+    # --- api ---------------------------------------------------------------------
+    "fastapi>=0.142,<0.143",
+    "uvicorn>=0.54,<1",
+    "python-multipart>=0.0.32",       # multipart parsing for knowledge-base uploads
+    # --- validation / configuration ----------------------------------------------
+    "pydantic>=2.13,<3",
+    "pydantic-settings>=2.15,<3",
+    "email-validator>=2.3,<3",
+    # --- persistence -------------------------------------------------------------
+    "sqlalchemy[asyncio]>=2.1,<2.2",
+    "asyncpg>=0.31,<1",               # PostgreSQL driver (production database)
+    "aiosqlite>=0.22,<1",             # SQLite driver (tests and the no-Docker quick start)
+    "alembic>=1.20,<2",
+    # --- cache / rate limiting / locks ------------------------------------------
+    "redis>=8.1,<9",
+    # --- vector database -----------------------------------------------------------
+    "qdrant-client>=1.19,<2",
+    # --- llm + outbound http -------------------------------------------------------
+    "anthropic>=1.9,<2",
+    "httpx2>=2.13,<3",                # maintained, API-compatible httpx fork (the SDK's own stack)
+    # --- security --------------------------------------------------------------------
+    "argon2-cffi>=25.1,<26",
+    "pyjwt>=2.15,<3",
+    "cryptography>=50,<51",
+    # --- observability ---------------------------------------------------------------
+    "prometheus-client>=0.26,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "pytest-asyncio>=1.4,<2",
+    "pytest-cov>=7.1,<8",
+    "fakeredis>=2.38,<3",
+    "ruff>=0.16.9",
+    "mypy>=2.3,<3",
+    "bandit[toml]>=1.9.4",
+    "pip-audit>=2.10",
+    "import-linter>=2.15",
+    "pyyaml>=6.0",
+    "types-pyyaml>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mojtaba-py-code/secure-ai-customer-support-platform"
+Documentation = "https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/tree/main/docs"
+Issues = "https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/issues"
+Security = "https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/security/policy"
+Changelog = "https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/blob/main/CHANGELOG.md"
+
+[project.scripts]
+aegis = "aegis.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aegis"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/aegis", "migrations", "alembic.ini", "data", "README.md", "LICENSE"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["migrations/versions"]
+# The project may sit inside another repository whose .gitignore would hide it from ruff.
+respect-gitignore = false
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM", "RET", "PTH",
+    "ERA", "PL", "RUF", "ASYNC", "PERF", "S", "BLE", "LOG", "G", "PIE", "TID", "ISC",
+    "FURB", "SLOT", "FAST",
+]
+ignore = [
+    "PLR0913",  # explicit dependency injection legitimately needs several parameters
+    "PLR2004",  # magic values are clearer inline for HTTP status codes and limits
+    "ISC001",   # conflicts with the formatter
+    "N818",     # domain exceptions read as outcomes (NotFound, RateLimited), not *Error
+    "FAST002",  # the codebase uses Annotated dependencies consistently already
+    "E501",     # the formatter owns line length; long prose (prompts, tool descriptions) stays unbroken
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Unicode-handling code must spell out confusable characters on purpose.
+"src/aegis/security/text.py" = ["RUF001", "RUF002"]
+"src/aegis/security/injection.py" = ["RUF001", "RUF002"]
+"tests/**/*.py" = [
+    "S101", "S104", "S105", "S106", "S108", "S311", "PLR0915", "PLC0415", "ARG",
+    "SLF001", "RUF001", "RUF003", "PLR0912", "E501", "RUF012", "PERF401", "PLR0911",
+]
+"scripts/**/*.py" = ["T201", "S311"]
+"src/aegis/cli.py" = ["T201"]
+"migrations/**/*.py" = ["E501", "ERA001", "S608"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pickle".msg = "Insecure deserialization: never use pickle."
+"marshal".msg = "Insecure deserialization: never use marshal."
+"shelve".msg = "Insecure deserialization: shelve is pickle-based."
+"os.system".msg = "Use subprocess with an argument list and shell=False."
+"urllib.request".msg = "Outbound HTTP must go through aegis.core.egress (egress policy)."
+"requests".msg = "Outbound HTTP must go through aegis.core.egress (egress policy)."
+"httpx".msg = "Use httpx2 (the HTTP stack the Anthropic SDK uses) via aegis.core.egress."
+"yaml".msg = "Configuration files are TOML (stdlib tomllib); do not add YAML parsing."
+
+[tool.ruff.lint.pylint]
+max-args = 9
+max-returns = 8
+max-branches = 16
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+line-ending = "lf"
+
+# ---------------------------------------------------------------------------
+# MyPy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool", "possibly-undefined"]
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+files = ["src/aegis", "tests"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+module = ["fakeredis.*", "argon2.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Test bodies are still type-checked (strict implies check_untyped_defs); only
+# the annotations on test functions and pytest fixtures are optional.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+# ---------------------------------------------------------------------------
+# Pytest / coverage
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+addopts = ["-ra", "--strict-markers", "--strict-config", "-p", "no:cacheprovider"]
+markers = [
+    "security: security regression tests (authn, authz, IDOR, injection, uploads, leakage)",
+    "llm: behaviour of the LLM pipeline under hallucination, malformed output and adversarial input",
+    "postgres: needs a real PostgreSQL server (AEGIS_TEST_DATABASE_URL)",
+    "live: calls a real third-party API; never run by default (AEGIS_LIVE_TESTS=1)",
+]
+filterwarnings = [
+    "error",
+    "ignore::ResourceWarning",
+]
+
+[tool.coverage.run]
+source = ["aegis"]
+branch = true
+concurrency = ["greenlet", "thread"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.$",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------------
+# Bandit
+# ---------------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "migrations"]
+
+# ---------------------------------------------------------------------------
+# Architecture contracts (import-linter)
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "aegis"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: interfaces -> orchestration -> services -> infrastructure -> core"
+type = "layers"
+layers = [
+    "aegis.cli",
+    "aegis.main | aegis.workers | aegis.seed",
+    "aegis.api",
+    "aegis.middleware",
+    "aegis.bootstrap",
+    "aegis.agents",
+    "aegis.tools",
+    "aegis.services",
+    "aegis.rag | aegis.llm",
+    "aegis.repositories | aegis.kv",
+    "aegis.models",
+    "aegis.db",
+    "aegis.observability",
+    "aegis.security",
+    "aegis.schemas",
+    "aegis.domain",
+    "aegis.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "LLM adapters cannot reach the database, even indirectly"
+type = "forbidden"
+source_modules = ["aegis.llm"]
+forbidden_modules = ["sqlalchemy", "aegis.repositories", "aegis.models", "aegis.db", "aegis.services"]
+
+[[tool.importlinter.contracts]]
+name = "The agent and its tools reach data only through services (no direct SQL/ORM access)"
+type = "forbidden"
+source_modules = ["aegis.agents", "aegis.tools"]
+forbidden_modules = ["sqlalchemy", "aegis.repositories", "aegis.db"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "HTTP interfaces reach the database only through services"
+type = "forbidden"
+source_modules = ["aegis.api"]
+forbidden_modules = ["aegis.repositories", "anthropic", "qdrant_client"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Security primitives, domain rules and core are framework-free"
+type = "forbidden"
+source_modules = ["aegis.security", "aegis.core", "aegis.domain"]
+forbidden_modules = ["fastapi", "starlette", "sqlalchemy", "anthropic", "qdrant_client", "redis"]

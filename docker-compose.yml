@@ -1,0 +1,200 @@
+# AegisSupport AI - production-like stack.
+#
+#   aegis init-env --docker          # writes .env with fresh secrets (or: aegis generate-secrets)
+#   docker compose up -d --build
+#   docker compose --profile demo run --rm seed        # optional fictional demo data
+#
+# Least privilege throughout:
+#   * Only the API is published, and only on 127.0.0.1. PostgreSQL, Redis and Qdrant sit on an
+#     internal network with no route to the outside world.
+#   * No `env_file`: every container receives exactly the variables listed for it. The API and the
+#     worker never see the PostgreSQL superuser or schema-owner passwords; the migration job never
+#     sees the JWT secret, the encryption keys or provider API keys.
+#   * Database roles: `postgres` (bootstrap superuser, init script only), `aegis_owner` (owns the
+#     schema, used only by `migrate`), `aegis_app` (runtime DML; cannot alter the schema or the
+#     audit trail). See docker/postgres/init and migration 0002.
+#   * Application containers run read-only, as an unprivileged user, with every Linux capability
+#     dropped and no-new-privileges.
+#
+# Third-party images are pinned by digest (tag kept for readability; Dependabot updates both).
+#
+# Put a TLS-terminating reverse proxy in front for real traffic, set AEGIS_ALLOWED_HOSTS and
+# AEGIS_TRUSTED_PROXIES, and switch AEGIS_ENV to "production" (which enforces the HTTPS-only rules).
+
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+x-app: &app
+  <<: *hardening
+  build: .
+  image: aegis-support:1.0.0
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  volumes:
+    - app-var:/app/var
+  cap_drop: [ALL]
+  pids_limit: 256
+  networks: [backend]
+
+x-app-env: &app-env
+  AEGIS_ENV: ${AEGIS_ENV:-staging}
+  AEGIS_LOG_LEVEL: ${AEGIS_LOG_LEVEL:-INFO}
+  AEGIS_JWT_SECRET: ${AEGIS_JWT_SECRET:?run `aegis init-env --docker` to create .env}
+  AEGIS_FIELD_ENCRYPTION_KEYS: ${AEGIS_FIELD_ENCRYPTION_KEYS:?set AEGIS_FIELD_ENCRYPTION_KEYS}
+  AEGIS_METRICS_TOKEN: ${AEGIS_METRICS_TOKEN:?set AEGIS_METRICS_TOKEN}
+  AEGIS_DATABASE_URL: postgresql+asyncpg://aegis_app:${AEGIS_DB_APP_PASSWORD:?set AEGIS_DB_APP_PASSWORD}@postgres:5432/aegis
+  AEGIS_REDIS_URL: redis://aegis:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+  AEGIS_QDRANT_URL: http://qdrant:6333
+  AEGIS_QDRANT_API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY}
+  # Optional settings: an empty value means "use the default" (see docs/configuration.md).
+  AEGIS_ALLOWED_HOSTS: ${AEGIS_ALLOWED_HOSTS:-localhost,127.0.0.1}
+  AEGIS_CORS_ORIGINS: ${AEGIS_CORS_ORIGINS:-}
+  AEGIS_TRUSTED_PROXIES: ${AEGIS_TRUSTED_PROXIES:-}
+  AEGIS_HSTS_ENABLED: ${AEGIS_HSTS_ENABLED:-false}
+  AEGIS_PASSWORD_RESET_URL: ${AEGIS_PASSWORD_RESET_URL:-}
+  AEGIS_MFA_REQUIRED_FOR_STAFF: ${AEGIS_MFA_REQUIRED_FOR_STAFF:-true}
+  AEGIS_CONVERSATION_RETENTION_DAYS: ${AEGIS_CONVERSATION_RETENTION_DAYS:-}
+  AEGIS_PAYMENT_PROVIDER: ${AEGIS_PAYMENT_PROVIDER:-simulated}
+  AEGIS_STRIPE_API_KEY: ${AEGIS_STRIPE_API_KEY:-}
+  AEGIS_STRIPE_WEBHOOK_SECRET: ${AEGIS_STRIPE_WEBHOOK_SECRET:-}
+  AEGIS_LLM_PROVIDER: ${AEGIS_LLM_PROVIDER:-offline}
+  AEGIS_ANTHROPIC_API_KEY: ${AEGIS_ANTHROPIC_API_KEY:-}
+  AEGIS_LLM_AGENT_MODEL: ${AEGIS_LLM_AGENT_MODEL:-}
+  AEGIS_LLM_USER_DAILY_TOKEN_BUDGET: ${AEGIS_LLM_USER_DAILY_TOKEN_BUDGET:-}
+  AEGIS_LLM_GLOBAL_DAILY_COST_LIMIT_USD: ${AEGIS_LLM_GLOBAL_DAILY_COST_LIMIT_USD:-}
+  AEGIS_EMBEDDING_PROVIDER: ${AEGIS_EMBEDDING_PROVIDER:-hashing}
+  AEGIS_EMBEDDING_DIMENSIONS: ${AEGIS_EMBEDDING_DIMENSIONS:-}
+  AEGIS_VOYAGE_API_KEY: ${AEGIS_VOYAGE_API_KEY:-}
+  AEGIS_EMAIL_BACKEND: ${AEGIS_EMAIL_BACKEND:-dev_mailbox}
+  AEGIS_EMAIL_FROM: ${AEGIS_EMAIL_FROM:-}
+  AEGIS_MAILBOX_DIR: /app/var/mailbox
+  AEGIS_SMTP_HOST: ${AEGIS_SMTP_HOST:-}
+  AEGIS_SMTP_PORT: ${AEGIS_SMTP_PORT:-}
+  AEGIS_SMTP_USERNAME: ${AEGIS_SMTP_USERNAME:-}
+  AEGIS_SMTP_PASSWORD: ${AEGIS_SMTP_PASSWORD:-}
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: aegis
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      AEGIS_DB_OWNER_PASSWORD: ${AEGIS_DB_OWNER_PASSWORD:?set AEGIS_DB_OWNER_PASSWORD}
+      AEGIS_DB_APP_PASSWORD: ${AEGIS_DB_APP_PASSWORD:?set AEGIS_DB_APP_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aegis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    shm_size: 128m
+    networks: [backend]
+
+  redis:
+    <<: *hardening
+    image: redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    # Start directly as the image's unprivileged user: with every capability dropped the
+    # entrypoint could not switch users itself.
+    user: redis
+    # ACL: the default user is disabled; "aegis" may only touch aegis:* keys and cannot run
+    # dangerous commands (FLUSHALL, CONFIG, KEYS, DEBUG, ...). Memory is capped; every key the app
+    # writes has a TTL, so volatile-lru eviction is safe. Nothing is persisted to disk.
+    command: >-
+      redis-server
+      --user default off
+      --user aegis on >${REDIS_PASSWORD:?set REDIS_PASSWORD} ~aegis:* +@all -@dangerous
+      --maxmemory 256mb --maxmemory-policy volatile-lru
+      --save "" --appendonly no --protected-mode yes
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --user aegis ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    cap_drop: [ALL]
+    networks: [backend]
+
+  qdrant:
+    <<: *hardening
+    image: qdrant/qdrant:v1.19.1-unprivileged@sha256:801777072776dc81b2a9dd2007b2ed487571f21ecd30efffd15ddb1671f2193d
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?set QDRANT_API_KEY}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    cap_drop: [ALL]
+    networks: [backend]
+
+  migrate:
+    <<: *app
+    command: ["aegis", "migrate"]
+    environment:
+      AEGIS_MIGRATION_DATABASE_URL: postgresql+asyncpg://aegis_owner:${AEGIS_DB_OWNER_PASSWORD:?set AEGIS_DB_OWNER_PASSWORD}@postgres:5432/aegis
+      AEGIS_DB_APP_ROLE: aegis_app
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  api:
+    <<: *app
+    environment:
+      <<: *app-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      qdrant: {condition: service_started}
+    networks: [backend, frontend]
+
+  worker:
+    <<: *app
+    command: ["aegis", "worker"]
+    environment:
+      <<: *app-env
+      AEGIS_WORKER_HEARTBEAT_FILE: /tmp/aegis-worker.heartbeat
+    healthcheck:
+      test: ["CMD", "aegis", "healthcheck", "--worker"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      qdrant: {condition: service_started}
+
+  seed:
+    <<: *app
+    profiles: ["demo"]
+    command: ["aegis", "seed", "--credentials", "/app/var/seed-credentials.json"]
+    environment:
+      <<: *app-env
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      qdrant: {condition: service_started}
+    restart: "no"
+
+networks:
+  backend:
+    internal: true
+  frontend: {}
+
+volumes:
+  pg-data:
+  qdrant-data:
+  app-var:

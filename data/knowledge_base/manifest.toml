@@ -1,0 +1,101 @@
+# Knowledge-base seed manifest (fictional company "Acme Home Electronics").
+# visibility: "public" documents can be retrieved for customers; "internal" documents only for staff.
+
+[[document]]
+file = "faq.md"
+title = "Frequently Asked Questions"
+slug = "faq"
+category = "faq"
+visibility = "public"
+effective_date = "2026-06-01"
+
+[[document]]
+file = "refund-policy.md"
+title = "Refund and Returns Policy"
+slug = "refund-policy"
+category = "refund_policy"
+visibility = "public"
+effective_date = "2026-07-01"
+
+[[document]]
+file = "shipping-policy.md"
+title = "Shipping Policy"
+slug = "shipping-policy"
+category = "shipping_policy"
+visibility = "public"
+effective_date = "2026-05-15"
+
+[[document]]
+file = "cancellation-policy.md"
+title = "Order Cancellation Policy"
+slug = "cancellation-policy"
+category = "cancellation_policy"
+visibility = "public"
+effective_date = "2026-05-15"
+
+[[document]]
+file = "warranty.md"
+title = "Limited Warranty"
+slug = "warranty"
+category = "warranty"
+visibility = "public"
+effective_date = "2026-01-01"
+
+[[document]]
+file = "payments.md"
+title = "Payments and Billing"
+slug = "payments"
+category = "payment_policy"
+visibility = "public"
+effective_date = "2026-04-01"
+
+[[document]]
+file = "account-security.md"
+title = "Account and Security Help"
+slug = "account-security"
+category = "account_policy"
+visibility = "public"
+effective_date = "2026-03-01"
+
+[[document]]
+file = "privacy-notice.md"
+title = "Privacy Notice (Summary)"
+slug = "privacy-notice"
+category = "privacy_policy"
+visibility = "public"
+effective_date = "2026-02-01"
+
+[[document]]
+file = "guide-soundbar-500.md"
+title = "Acme SoundBar 500 Setup and Troubleshooting"
+slug = "guide-soundbar-500"
+category = "product_docs"
+visibility = "public"
+
+[[document]]
+file = "guide-smartcam-2.md"
+title = "Acme SmartCam 2 Setup and Troubleshooting"
+slug = "guide-smartcam-2"
+category = "product_docs"
+visibility = "public"
+
+[[document]]
+file = "guide-mesh-router-x3.md"
+title = "Acme Mesh Router X3 Troubleshooting"
+slug = "guide-mesh-router-x3"
+category = "product_docs"
+visibility = "public"
+
+[[document]]
+file = "internal-escalation-playbook.md"
+title = "INTERNAL - Escalation and Goodwill Playbook"
+slug = "internal-escalation-playbook"
+category = "internal_playbook"
+visibility = "internal"
+
+[[document]]
+file = "internal-fraud-review.md"
+title = "INTERNAL - Fraud Review Procedure"
+slug = "internal-fraud-review"
+category = "internal_playbook"
+visibility = "internal"
