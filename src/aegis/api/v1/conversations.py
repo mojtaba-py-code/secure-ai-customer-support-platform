@@ -86,7 +86,8 @@ async def list_messages(
     conversation_id: ConversationId,
     principal: Reader,
     services: ServicesDep,
-    before: Annotated[int | None, Query(ge=1)] = None,
+    # Bounded by the column type (32-bit INTEGER): a larger value is a 422, not a database error.
+    before: Annotated[int | None, Query(ge=1, le=2_147_483_647)] = None,
     limit: Limit = 50,
 ) -> list[MessageOut]:
     messages = await services.conversations.messages(

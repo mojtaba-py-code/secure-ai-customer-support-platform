@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from aegis.api.deps import ip_rate_limit
+from aegis.api.deps import ip_rate_limit, reject_unknown_query_parameters
 from aegis.api.v1 import (
     API_V1_PREFIX,
     admin,
@@ -32,8 +32,8 @@ V1_ROUTERS: tuple[APIRouter, ...] = (
     webhooks.router,
 )
 #: Dependencies applied to every /api/v1 route (before authentication): a per-client-IP limit,
-#: so even requests with invalid tokens are throttled.
-V1_DEPENDENCIES = (Depends(ip_rate_limit),)
+#: so even requests with invalid tokens are throttled, then strict query-string validation.
+V1_DEPENDENCIES = (Depends(ip_rate_limit), Depends(reject_unknown_query_parameters))
 
 _PROBLEM: dict[str, Any] = {
     "model": Problem,

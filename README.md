@@ -272,10 +272,12 @@ Releases (`v*` tags) publish a container image to GitHub Container Registry that
 before it is pushed, signed with Sigstore cosign and shipped with SLSA provenance and an SBOM;
 [SECURITY.md](SECURITY.md#operating-it-securely) shows how to verify it.
 
-Fuzzing the running API before the first release found two defects that the 470 existing tests
-had not: lax boolean coercion (`{"approve": 0}` rejected a refund) and an incomplete `Allow`
-header on `405` responses. Both are fixed and covered by regression tests - see
-[docs/security-audit.md](docs/security-audit.md) (F-22, F-23).
+Testing the *running* system before the first release found five defects that the 470
+existing tests had not: the Compose stack's Redis ACL was silently truncated (Compose read the
+`>` of the password rule as a shell redirection), lax boolean coercion let `{"approve": 0}`
+reject a refund, an out-of-range paging cursor caused a `500`, undeclared query parameters were
+silently ignored, and `405` responses listed an incomplete `Allow` header. All five are fixed and
+covered by regression tests - see [docs/security-audit.md](docs/security-audit.md) (F-22 to F-26).
 
 **Not exercised by CI:** calls to the real Claude, Voyage AI and Stripe APIs (they need paid
 accounts). The adapters are tested against simulated transports that use the providers' request

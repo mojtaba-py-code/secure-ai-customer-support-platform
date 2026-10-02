@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Annotated, Any, cast
 
 from fastapi import Depends, Header, Query, Request
+from fastapi.dependencies.models import Dependant
+from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,6 +135,36 @@ def require_admin(
 
 async def ip_rate_limit(container: ContainerDep, ip: ClientIpDep) -> None:
     await enforce_rate_limit(container, container.rate_limits.api_ip, f"ip:{ip}")
+
+
+def declared_query_parameters(dependant: Dependant) -> frozenset[str]:
+    """The query parameter names an endpoint accepts, including those of its dependencies.
+
+    Walked per request: a handful of nodes, and FastAPI's ``Dependant`` is not hashable.
+    """
+    names: set[str] = set()
+    pending = [dependant]
+    while pending:
+        current = pending.pop()
+        names.update(field.alias for field in current.query_params)
+        pending.extend(current.dependencies)
+    return frozenset(names)
+
+
+async def reject_unknown_query_parameters(request: Request) -> None:
+    """Query strings are validated like bodies (``extra="forbid"``): an undeclared parameter is a 422.
+
+    A misspelt filter (``?stauts=open``) would otherwise be ignored silently and widen the result.
+    The rejected names are not echoed: like submitted values, they are the client's input.
+    """
+    dependant = getattr(request.scope.get("route"), "dependant", None)
+    if not isinstance(dependant, Dependant):
+        return
+    declared = declared_query_parameters(dependant)
+    if any(name not in declared for name in request.query_params):
+        raise RequestValidationError(
+            [{"loc": ("query",), "msg": "Unknown query parameter.", "type": "extra_forbidden"}]
+        )
 
 
 def idempotency_key(

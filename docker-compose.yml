@@ -106,12 +106,30 @@ services:
     # ACL: the default user is disabled; "aegis" may only touch aegis:* keys and cannot run
     # dangerous commands (FLUSHALL, CONFIG, KEYS, DEBUG, ...). Memory is capped; every key the app
     # writes has a TTL, so volatile-lru eviction is safe. Nothing is persisted to disk.
-    command: >-
-      redis-server
-      --user default off
-      --user aegis on >${REDIS_PASSWORD:?set REDIS_PASSWORD} ~aegis:* +@all -@dangerous
-      --maxmemory 256mb --maxmemory-policy volatile-lru
-      --save "" --appendonly no --protected-mode yes
+    # Exec form on purpose: in a command *string* Compose reads the unquoted ">" of the password
+    # rule as a shell redirection and silently drops everything after it.
+    command:
+      - redis-server
+      - --user
+      - default
+      - "off"
+      - --user
+      - aegis
+      - "on"
+      - ">${REDIS_PASSWORD:?set REDIS_PASSWORD}"
+      - "~aegis:*"
+      - "+@all"
+      - "-@dangerous"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - volatile-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --protected-mode
+      - "yes"
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD}
     healthcheck:

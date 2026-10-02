@@ -10,8 +10,11 @@ from typing import Any
 import httpx2
 import jwt
 import pytest
+from fastapi.routing import APIRoute
 from sqlalchemy import select, update
 
+from aegis.api.deps import declared_query_parameters
+from aegis.api.router import V1_ROUTERS
 from aegis.bootstrap import AppContainer
 from aegis.main import create_app
 from aegis.models import Conversation, SupportTicket, User
@@ -387,6 +390,46 @@ async def test_api_is_rate_limited_per_client_ip_even_without_a_valid_token() ->
     assert limited.headers["content-type"].startswith("application/problem+json")
     assert probe.status_code == 200  # health probes are outside the versioned API
     assert fresh.status_code == 401  # the limit is per client address
+
+
+async def test_unknown_query_parameters_are_rejected(
+    client: httpx2.AsyncClient, seeded: Creds, login: Login
+) -> None:
+    # Found by fuzzing: undeclared parameters were ignored, so a misspelt filter widened results.
+    headers = await login(seeded, MAYA)
+    assert (await client.get("/api/v1/orders?limit=5&offset=0", headers=headers)).status_code == 200
+    for url in (
+        "/api/v1/orders?limit=5&stauts=shipped",
+        "/api/v1/conversations?x-unknown-property=42",
+        "/api/v1/auth/me?debug=1",
+    ):
+        response = await client.get(url, headers=headers)
+        assert response.status_code == 422, url
+        assert response.json()["errors"] == [
+            {"loc": ["query"], "msg": "Unknown query parameter.", "type": "extra_forbidden"}
+        ]
+        for name in ("stauts", "x-unknown-property", "debug"):  # the client's input is not echoed
+            assert name not in response.text
+        assert_security_headers(response)
+
+
+def test_every_documented_query_parameter_is_accepted() -> None:
+    paths = create_app(make_settings(api_docs_enabled=True)).openapi()["paths"]
+    checked = 0
+    for router in V1_ROUTERS:
+        for route in router.routes:
+            assert isinstance(route, APIRoute)
+            for method in route.methods or ():
+                operation = paths[route.path][method.lower()]
+                documented = {
+                    p["name"] for p in operation.get("parameters", []) if p["in"] == "query"
+                }
+                assert declared_query_parameters(route.dependant) == documented, (
+                    method,
+                    route.path,
+                )
+                checked += 1
+    assert checked >= 50
 
 
 def test_openapi_documents_problem_responses() -> None:

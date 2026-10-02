@@ -282,6 +282,11 @@ async def test_conversation_lifecycle_and_history(
         await client.get(f"/api/v1/conversations/{conversation}/messages?before=2", headers=headers)
     ).json()
     assert [m["sequence"] for m in page] == [1]
+    for out_of_range in ("0", "2147483648", "63592642924807118848"):  # found by fuzzing: was a 500
+        response = await client.get(
+            f"/api/v1/conversations/{conversation}/messages?before={out_of_range}", headers=headers
+        )
+        assert response.status_code == 422, out_of_range
     closed = await client.post(f"/api/v1/conversations/{conversation}/close", headers=headers)
     assert closed.json()["status"] == "closed"
     assert (await _say(client, headers, conversation, "hello again")).status_code == 409

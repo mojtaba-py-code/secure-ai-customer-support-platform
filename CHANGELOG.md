@@ -39,13 +39,24 @@ First public release.
 
 ### Fixed
 
-Found by fuzzing the running API with Schemathesis before the first release:
+Defects found before the release by testing the running system (each has a regression test;
+details in docs/security-audit.md, F-22 to F-26):
 
-- Boolean fields in request bodies (`approve` on a refund decision, `is_active` on an account,
-  `return_to_ai` on a handoff) accept only JSON booleans. Lax coercion used to turn `0`, `"no"`
-  or `"false"` into `false` and `1` or `"yes"` into `true`, so a malformed client could reject
-  or approve a refund, or deactivate an account, without sending a boolean.
-- A `405 Method Not Allowed` response lists every method the resource supports in `Allow`
-  (RFC 9110); a path served by two routes used to advertise only one of them.
+- **Docker Compose:** the Redis ACL is passed as an exec-form list. As a command string, Compose
+  read the `>` of the password rule as a shell redirection and dropped the rest of the line
+  (password, key pattern, command restrictions, memory cap), so Redis refused every client.
+  Found when CI first started the stack.
+- **API input validation:** boolean fields in request bodies (`approve` on a refund decision,
+  `is_active` on an account, `return_to_ai` on a handoff) accept only JSON booleans. Lax
+  coercion turned `0`, `"no"` or `"false"` into `false` and `1` or `"yes"` into `true`. Found by
+  Schemathesis.
+- **API input validation:** an out-of-range `before` cursor on the message history caused a
+  database error and a `500`; it is now a `422`. Found by Schemathesis.
+- **API input validation:** undeclared query parameters are rejected with a `422`, as unknown
+  body fields already were; a misspelt filter no longer returns unfiltered results. Found by
+  Schemathesis.
+- **HTTP semantics:** a `405 Method Not Allowed` response lists every method the resource
+  supports in `Allow` (RFC 9110); a path served by two routes advertised only one of them.
+  Found by Schemathesis.
 
 [1.0.0]: https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/releases/tag/v1.0.0

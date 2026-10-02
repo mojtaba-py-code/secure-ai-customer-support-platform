@@ -61,6 +61,31 @@ def test_containers_are_hardened() -> None:
     assert SERVICES["qdrant"]["image"].split("@")[0].endswith("-unprivileged")
 
 
+def test_commands_are_exec_form_lists() -> None:
+    # A command string is split shell-style by Compose: an unquoted ">" (Redis' password rule)
+    # was read as a redirection and everything after it - the password, the key pattern, the
+    # memory cap - was silently dropped, leaving a passwordless ACL user. Found by running the
+    # stack in CI (the health check failed with WRONGPASS).
+    for name, service in SERVICES.items():
+        if "command" in service:
+            assert isinstance(service["command"], list), name
+            assert all(isinstance(part, str) for part in service["command"]), name
+    redis = SERVICES["redis"]["command"]
+    rule = redis[redis.index("aegis") :]
+    assert rule[:6] == [
+        "aegis",
+        "on",
+        ">${REDIS_PASSWORD:?set REDIS_PASSWORD}",
+        "~aegis:*",
+        "+@all",
+        "-@dangerous",
+    ]
+    assert redis[redis.index("default") + 1] == "off"
+    assert redis[redis.index("--maxmemory") + 1] == "256mb"
+    assert redis[redis.index("--save") + 1] == ""
+    assert redis[redis.index("--appendonly") + 1] == "no"
+
+
 def test_only_the_api_is_published_and_only_on_loopback() -> None:
     for name, service in SERVICES.items():
         ports = service.get("ports", [])
