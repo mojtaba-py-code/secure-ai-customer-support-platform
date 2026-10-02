@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/security/advisories/new
+    about: Never in a public issue - report it privately (see SECURITY.md).
+  - name: Documentation
+    url: https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/tree/main/docs
+    about: Architecture, agent pipeline, API, security, deployment and operations guides.

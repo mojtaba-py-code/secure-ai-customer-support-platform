@@ -1,0 +1,7 @@
+# zizmor (workflow security audit, CI job "Workflow security") configuration.
+rules:
+  self-repository:
+    # Recommends GitHub's new `uses: $/...` form for in-repository actions. Local actions keep the
+    # `./` form until that syntax is generally available; the composite action is checked out
+    # from the same commit by actions/checkout and no step writes to .github/ before it runs.
+    disable: true

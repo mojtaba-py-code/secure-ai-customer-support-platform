@@ -1,0 +1,3 @@
+# OWASP ZAP rule configuration for the API scan in CI (.github/workflows/ci.yml, job "dast").
+# Format: <rule id> TAB <IGNORE|WARN|FAIL> TAB <reason>. A rule not listed keeps its default
+# level. Every IGNORE needs a reason that says why the finding does not apply to this API.

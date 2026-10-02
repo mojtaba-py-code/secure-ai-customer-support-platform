@@ -1,0 +1,372 @@
+# Continuous integration. Every gate of `python scripts/check.py`, plus what only CI can run:
+# the suite on three Python versions and on PostgreSQL, the container image (build, policy,
+# vulnerability scan, SBOM), the full Docker Compose stack driven end to end, dynamic security
+# testing of the running API (Schemathesis and OWASP ZAP), secret scanning of the whole history
+# and a security audit of these workflows.
+#
+# Every third-party action is pinned to a full commit SHA (Dependabot keeps the pins current),
+# every job starts from a read-only token, and no job uses a secret.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"  # weekly: new advisories and base-image fixes surface without a push
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  static:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-env
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Format (ruff format)
+        run: uv run ruff format --check .
+      - name: Types (mypy, strict)
+        run: uv run mypy
+      - name: Architecture contracts (import-linter)
+        run: uv run lint-imports
+      - name: Static security analysis (bandit)
+        run: uv run bandit -c pyproject.toml -r src -q
+      - name: Lock file matches pyproject.toml
+        run: uv lock --check
+      - name: Generated documentation matches the code
+        run: uv run python scripts/generate_docs.py --check
+
+  tests:
+    name: Tests (Python ${{ matrix.python }}, SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-env
+        with:
+          python-version: ${{ matrix.python }}
+      - name: pytest - unit, integration, security and LLM-behaviour suites, branch coverage
+        run: >-
+          uv run pytest -p no:randomly
+          --cov --cov-report=term --cov-report=xml:coverage.xml --junitxml=junit.xml
+      - name: Upload the coverage and test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: tests-py${{ matrix.python }}
+          path: |
+            coverage.xml
+            junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  tests-postgres:
+    name: Tests (PostgreSQL 16, migrations, database hardening)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          # Throw-away server on the ephemeral runner: trust authentication, so no credential
+          # exists anywhere. The hardening test creates its own least-privilege roles.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: aegis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      AEGIS_TEST_DATABASE_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/aegis_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-env
+      - name: pytest on PostgreSQL (includes the migration and database-hardening test)
+        run: uv run pytest -p no:randomly -rs
+
+  dependency-audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-env
+      - name: Audit every locked package (runtime and development), hash-pinned
+        run: |
+          uv export --frozen --no-emit-project --format requirements-txt \
+            --output-file "${RUNNER_TEMP}/requirements.audit.txt"
+          uv run pip-audit --requirement "${RUNNER_TEMP}/requirements.audit.txt" \
+            --require-hashes --disable-pip --strict --progress-spinner off
+
+  secret-scan:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read  # list the commits of a pull request
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # every commit, not only the tip
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e  # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .github/gitleaks.toml
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_ENABLE_COMMENTS: "false"  # read-only token: report in the job log only
+
+  workflow-security:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.20"
+          enable-cache: false
+      - name: Audit the workflows and the composite action
+        env:
+          GH_TOKEN: ${{ github.token }}  # read-only: enables the online audits (impostor commits, known-vulnerable actions)
+        run: uvx zizmor@1.30.1 --format plain .github
+
+  container:
+    name: Container (build, policy, Trivy, SBOM, Compose end-to-end)
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write  # upload the Trivy results to code scanning
+    env:
+      IMAGE: aegis-support:1.0.0  # the tag docker-compose.yml runs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image policy (unprivileged user, health check, read-only root, no pip)
+        run: |
+          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = "aegis:aegis"
+          test "$(docker image inspect --format '{{json .Config.Healthcheck}}' "$IMAGE")" != "null"
+          test "$(docker run --rm --read-only --cap-drop ALL --entrypoint id "$IMAGE" -u)" = "10001"
+          docker run --rm --read-only --cap-drop ALL --entrypoint python "$IMAGE" -c \
+            "import importlib.util, sys; sys.exit(importlib.util.find_spec('pip') is not None)"
+          docker run --rm --read-only --cap-drop ALL "$IMAGE" aegis --help > /dev/null
+      - name: Trivy - image vulnerabilities (fail on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: Trivy - image report for code scanning (all severities)
+        if: ${{ !cancelled() && !github.event.repository.private }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          format: sarif
+          output: trivy-image.sarif
+          skip-setup-trivy: true
+      - name: Upload the Trivy report to code scanning
+        if: ${{ !cancelled() && !github.event.repository.private }}
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+      - name: Trivy - Dockerfile and configuration misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+          skip-setup-trivy: true
+      - name: SBOM of the image (CycloneDX)
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26  # v0.24.2
+        with:
+          image: ${{ env.IMAGE }}
+          format: cyclonedx-json
+          output-file: aegis-support.cdx.json
+          upload-artifact: false
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom
+          path: aegis-support.cdx.json
+          retention-days: 30
+
+      # --- the production-like stack, end to end --------------------------------------------------
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.20"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Throw-away .env with fresh secrets
+        run: |
+          uv sync --locked --no-dev
+          uv run aegis init-env --docker
+      - name: Validate the Compose file
+        run: docker compose config --quiet
+      - name: Start PostgreSQL, Redis, Qdrant, the migration, the API and the worker
+        env:
+          # The demo signs in as a support agent; staff two-factor enrolment is covered by the
+          # test suite, so the demo stack lets staff in without it.
+          AEGIS_MFA_REQUIRED_FOR_STAFF: "false"
+        run: docker compose up -d --no-build --wait --wait-timeout 300
+      - name: Stack checks (readiness, migration, nothing but the API published)
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8000/health/ready
+          echo
+          test "$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps --all --quiet migrate)")" = 0
+          for service in postgres:5432 redis:6379 qdrant:6333; do
+            if docker compose port "${service%%:*}" "${service##*:}" > /dev/null 2>&1; then
+              echo "::error::${service} is published on the host"; exit 1
+            fi
+          done
+          docker compose ps
+      - name: Seed the fictional demo business
+        env:
+          AEGIS_MFA_REQUIRED_FOR_STAFF: "false"
+        run: |
+          docker compose --profile demo run --rm seed
+          mkdir -p var
+          docker compose exec -T api cat /app/var/seed-credentials.json > var/seed-credentials.json
+      - name: End-to-end demo against the stack (customer, assistant, agent desk)
+        run: uv run python scripts/demo.py --base-url http://127.0.0.1:8000
+      - name: Compose logs
+        if: failure()
+        run: docker compose logs --no-color --timestamps
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  dast:
+    name: DAST (Schemathesis API fuzzing, OWASP ZAP)
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASE_URL: http://127.0.0.1:8000
+      AEGIS_ENV: staging
+      AEGIS_LOG_JSON: "false"
+      # Rate limits are raised so that the scanners reach the handlers instead of the limiter
+      # (the limiter itself is covered by the security test suite).
+      AEGIS_RL_LOGIN_PER_IP_PER_MINUTE: "1000000"
+      AEGIS_RL_LOGIN_PER_ACCOUNT_PER_15_MINUTES: "1000000"
+      AEGIS_RL_PASSWORD_RESET_PER_HOUR: "1000000"
+      AEGIS_RL_REFRESH_PER_MINUTE: "1000000"
+      AEGIS_RL_API_PER_USER_PER_MINUTE: "1000000"
+      AEGIS_RL_API_PER_IP_PER_MINUTE: "1000000"
+      AEGIS_RL_LLM_PER_USER_PER_MINUTE: "1000000"
+      AEGIS_RL_LLM_PER_USER_PER_DAY: "1000000"
+      AEGIS_RL_UPLOAD_PER_HOUR: "1000000"
+      AEGIS_RL_ADMIN_PER_MINUTE: "1000000"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-env
+      - name: Start the API (SQLite, embedded index, offline model, demo data)
+        run: |
+          uv run aegis init-env
+          uv run aegis migrate
+          uv run aegis seed
+          nohup uv run aegis serve --port 8000 > "${RUNNER_TEMP}/server.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl --fail --silent --output /dev/null "${BASE_URL}/health/ready" && break
+            sleep 1
+          done
+          curl --fail --silent --show-error "${BASE_URL}/health/ready"
+      - name: Sign in as a customer and as an administrator
+        run: |
+          for role in customer admin; do
+            token="$(uv run python scripts/dast_token.py --role "${role}" --base-url "${BASE_URL}")"
+            echo "::add-mask::${token}"
+            printf '%s' "${token}" > "${RUNNER_TEMP}/${role}.token"
+          done
+      - name: Schemathesis - every operation, as an administrator
+        run: >-
+          uvx --from schemathesis==4.29.0 st run "${BASE_URL}/openapi.json"
+          --header "Authorization: Bearer $(cat "${RUNNER_TEMP}/admin.token")"
+          --checks all --exclude-checks positive_data_acceptance
+          --exclude-path-regex '(logout|revoke-sessions)'
+          --max-examples 20 --workers 2 --max-time 420 --seed 20261003
+          --report junit --report-dir reports/schemathesis-admin
+      - name: Schemathesis - every operation, as a customer
+        run: >-
+          uvx --from schemathesis==4.29.0 st run "${BASE_URL}/openapi.json"
+          --header "Authorization: Bearer $(cat "${RUNNER_TEMP}/customer.token")"
+          --checks all --exclude-checks positive_data_acceptance
+          --exclude-path-regex '(logout|revoke-sessions)'
+          --max-examples 20 --workers 2 --max-time 300 --seed 20261003
+          --report junit --report-dir reports/schemathesis-customer
+      - name: OWASP ZAP - API scan (passive and active rules), as a customer
+        run: |
+          mkdir -p reports/zap && chmod 777 reports/zap
+          cp .github/zap/rules.tsv reports/zap/rules.tsv
+          docker run --rm --network host --user zap \
+            -v "${PWD}/reports/zap:/zap/wrk:rw" \
+            -e ZAP_AUTH_HEADER=Authorization \
+            -e ZAP_AUTH_HEADER_VALUE="Bearer $(cat "${RUNNER_TEMP}/customer.token")" \
+            -e ZAP_AUTH_HEADER_SITE=127.0.0.1 \
+            ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef \
+            zap-api-scan.py -t "${BASE_URL}/openapi.json" -f openapi -I \
+              -c rules.tsv -r zap-report.html -w zap-report.md \
+              -z "-config scanner.maxScanDurationInMins=12"
+          cat reports/zap/zap-report.md >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload the DAST reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: dast-reports
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Server log
+        if: failure()
+        run: cat "${RUNNER_TEMP}/server.log"

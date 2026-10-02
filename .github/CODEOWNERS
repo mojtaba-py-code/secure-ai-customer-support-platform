@@ -1,0 +1,14 @@
+# Every change is reviewed by the maintainer. The security-critical paths are listed as well, so
+# that they keep a required reviewer when more maintainers join.
+*                         @mojtaba-py-code
+
+/src/aegis/security/      @mojtaba-py-code
+/src/aegis/agents/        @mojtaba-py-code
+/src/aegis/tools/         @mojtaba-py-code
+/src/aegis/services/auth.py      @mojtaba-py-code
+/src/aegis/services/payments.py  @mojtaba-py-code
+/migrations/              @mojtaba-py-code
+/Dockerfile               @mojtaba-py-code
+/docker-compose.yml       @mojtaba-py-code
+/.github/                 @mojtaba-py-code
+/SECURITY.md              @mojtaba-py-code

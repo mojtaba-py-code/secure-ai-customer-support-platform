@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security problems must not be reported here** - use the private channel in SECURITY.md.
+        Never paste real customer data, API keys or the contents of a `.env` file.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or API requests, starting from a fresh `aegis seed` if possible.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 1.0.0 or a commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How it runs
+      options:
+        - Quick start (uv, SQLite, offline model)
+        - Docker Compose
+        - Other (describe below)
+    validations:
+      required: true
+  - type: dropdown
+    id: llm
+    attributes:
+      label: Model provider
+      options:
+        - offline (default)
+        - anthropic (Claude)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Logs are already redacted by the application, but check them once more before posting.
+      render: text

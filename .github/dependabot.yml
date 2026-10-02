@@ -1,0 +1,52 @@
+# Weekly dependency updates. A new release is adopted only after a 7-day cooldown, so that a
+# compromised or broken release is usually pulled before it reaches this repository. Security
+# updates are not delayed: they are raised as soon as an advisory is published, independently of
+# this schedule (repository setting "Dependabot security updates").
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    ignore:
+      # The base image follows the supported Python line (3.12); digests and patch releases
+      # still update.
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    ignore:
+      # Major versions of the data services change on-disk formats; they are upgraded on purpose.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
+      - dependency-name: redis
+        update-types: [version-update:semver-major]

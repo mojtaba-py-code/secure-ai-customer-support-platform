@@ -1,0 +1,12 @@
+# Secret scanning (gitleaks >= 8.25): the default rule set, plus one allow-list for the test
+# suite. Its synthetic credentials (fake Claude keys, a fake private key header, fake webhook
+# secrets) exist to exercise the redaction, output-guard and secret-detection code and must stay.
+# Used by CI (GITLEAKS_CONFIG) and locally: gitleaks git --config .github/gitleaks.toml
+title = "AegisSupport AI secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credentials in tests (redaction, guard, config and webhook tests)"
+paths = ['''^tests/''']
