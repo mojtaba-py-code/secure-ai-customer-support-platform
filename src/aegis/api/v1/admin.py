@@ -207,7 +207,16 @@ async def reindex_document(
     )
 
 
-@router.delete("/knowledge-base/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/knowledge-base/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Archive a document",
+    description=(
+        "Soft delete: the document leaves retrieval at once (its chunks are removed from the "
+        "vector index and the assistant can no longer cite it), while the record stays readable "
+        "to administrators with status `archived` for the audit trail."
+    ),
+)
 async def archive_document(
     document_id: uuid.UUID, principal: KbAdmin, services: ServicesDep
 ) -> Response:

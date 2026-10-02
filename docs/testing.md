@@ -108,7 +108,7 @@ runtime role, then:
 | Secret scan | gitleaks over the whole history (`.github/gitleaks.toml` allows the synthetic secrets under `tests/`) |
 | Workflow security | zizmor over `.github/` |
 | Container | image build, image policy, Trivy (image and Dockerfile), CycloneDX SBOM, then the Compose stack: readiness, migration exit code, no data-service port on the host, seed, and `scripts/demo.py` against the stack |
-| DAST | the API started with demo data (`scripts/dast_token.py` signs in), Schemathesis as an administrator and as a customer (every check except `positive_data_acceptance`, whose false positives are invalid tokens and empty uploads), and an OWASP ZAP API scan (`.github/zap/rules.tsv`) |
+| DAST | the API started with demo data (`scripts/dast_token.py` signs in), Schemathesis as an administrator and as a customer (every check except `positive_data_acceptance`, whose false positives are invalid tokens and empty uploads, and `use_after_free`, since `DELETE` archives a knowledge-base document on purpose), and an OWASP ZAP API scan (`.github/zap/rules.tsv`) |
 
 `codeql.yml` (Python and Actions, `security-extended`) and `supply-chain.yml` (dependency review,
 OpenSSF Scorecard, weekly Trivy scans of the third-party images) run beside it.
