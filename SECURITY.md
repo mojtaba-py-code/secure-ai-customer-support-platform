@@ -99,3 +99,36 @@ cosign verify ghcr.io/mojtaba-py-code/secure-ai-customer-support-platform:1.0.0 
 gh attestation verify oci://ghcr.io/mojtaba-py-code/secure-ai-customer-support-platform:1.0.0 \
   --repo mojtaba-py-code/secure-ai-customer-support-platform
 ```
+
+The wheel and the source distribution on the GitHub release carry a cosign bundle each
+(`*.sigstore.json`) and the SLSA provenance (`aegis_support.intoto.jsonl`):
+
+```bash
+cosign verify-blob aegis_support-1.0.0-py3-none-any.whl \
+  --bundle aegis_support-1.0.0-py3-none-any.whl.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/mojtaba-py-code/secure-ai-customer-support-platform/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify aegis_support-1.0.0-py3-none-any.whl \
+  --repo mojtaba-py-code/secure-ai-customer-support-platform
+```
+
+## Third-party images
+
+The Compose stack runs PostgreSQL, Redis and Qdrant from their official images, pinned by
+digest. A weekly job (`supply-chain.yml`) scans them as pinned and lists their fixable HIGH and
+CRITICAL findings in its summary. Those are packages inside the upstream images (for example the
+`gosu` helper, OpenSSL in the Alpine base, or Node.js modules bundled with Qdrant) that this
+repository cannot patch; the remedy is a newer pin once upstream publishes a rebuilt image, which
+Dependabot proposes. They are kept out of code scanning, which tracks this project's own code and
+container image. In production, keep the data services on a private network, as the Compose file
+does, and follow the upstream projects' security advisories.
+
+## Code-scanning triage
+
+Alerts that were reviewed and dismissed, with the reason:
+
+| Rule | Location | Reason |
+|---|---|---|
+| `py/weak-sensitive-data-hashing` | `src/aegis/security/tokens.py` (`hash_opaque_token`) | Hashes only 256-bit random opaque tokens (sessions, refresh, password-reset and MFA-challenge tokens from `secrets.token_urlsafe(32)`), never passwords - those use Argon2id. A fast hash is the standard construction for high-entropy tokens. |
+| `py/clear-text-logging-sensitive-data` | `src/aegis/cli.py` (`generate-secrets`) | The command's purpose is to print freshly generated secrets for the operator to store in a secret manager; nothing is logged. `init-env` writes them to an owner-only file instead. |
+| `py/clear-text-logging-sensitive-data` | `src/aegis/cli.py` (`create-admin`) | Prints only the fixed password-policy messages (for example "is too common"), never the password. |
