@@ -358,16 +358,18 @@ jobs:
         run: |
           mkdir -p reports/zap && chmod 777 reports/zap
           cp .github/zap/rules.tsv reports/zap/rules.tsv
+          status=0
           docker run --rm --network host --user zap \
             -v "${PWD}/reports/zap:/zap/wrk:rw" \
             -e ZAP_AUTH_HEADER=Authorization \
             -e ZAP_AUTH_HEADER_VALUE="Bearer $(cat "${RUNNER_TEMP}/customer.token")" \
             -e ZAP_AUTH_HEADER_SITE=127.0.0.1 \
             ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef \
-            zap-api-scan.py -t "${BASE_URL}/openapi.json" -f openapi -I \
+            zap-api-scan.py -t "${BASE_URL}/openapi.json" -f openapi \
               -c rules.tsv -r zap-report.html -w zap-report.md \
-              -z "-config scanner.maxScanDurationInMins=12"
+              -z "-config scanner.maxScanDurationInMins=12" || status=$?
           cat reports/zap/zap-report.md >> "${GITHUB_STEP_SUMMARY}"
+          exit "${status}"  # any WARN or FAIL (see .github/zap/rules.tsv) fails the job
       - name: Upload the DAST reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

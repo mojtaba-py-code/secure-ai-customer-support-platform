@@ -1,3 +1,7 @@
 # OWASP ZAP rule configuration for the API scan in CI (.github/workflows/ci.yml, job "dast").
-# Format: <rule id> TAB <IGNORE|WARN|FAIL> TAB <reason>. A rule not listed keeps its default
-# level. Every IGNORE needs a reason that says why the finding does not apply to this API.
+# Format: <rule id> TAB <IGNORE|INFO|WARN|FAIL> TAB <reason>. Rules not listed keep the default
+# level, WARN, and any WARN fails the job. Every rule set to INFO says why its alerts are expected.
+100000	INFO	4xx answers are the expected result of the scan: a customer token calling staff routes (403), malformed and attack inputs (422), unknown resources (404).
+10111	INFO	Identifies the login endpoint; informational by design, sign-in is rate limited and audited.
+10024	INFO	Matches the parameter name actor_user_id (a UUID filter on the admin audit log), not sensitive data; credentials never travel in URLs.
+10049	INFO	Every API response is Cache-Control: no-store on purpose (personal data must not be cached).
