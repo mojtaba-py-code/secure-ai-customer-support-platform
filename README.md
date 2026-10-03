@@ -193,6 +193,31 @@ role), Redis runs with an ACL confined to the application's key prefix, and Qdra
 API key. For real traffic put a TLS-terminating reverse proxy in front and set
 `AEGIS_ENV=production` - see [docs/deployment.md](docs/deployment.md).
 
+To run the [demo](#try-it) against the stack, copy the generated demo credentials out of the
+container (CI does exactly this on every change):
+
+```bash
+mkdir -p var
+docker compose exec -T api cat /app/var/seed-credentials.json > var/seed-credentials.json
+uv run python scripts/demo.py
+```
+
+On this stack staff must enrol in two-factor authentication before they hold any permission
+(`AEGIS_MFA_REQUIRED_FOR_STAFF` defaults to `true`); set it to `false` in `.env` to let the demo's
+support agent in without enrolling.
+
+### Prebuilt, signed image
+
+Each release publishes the image to GitHub Container Registry - scanned before it is pushed,
+signed keyless with Sigstore cosign, with SLSA provenance and an SBOM attached. Verify it as shown
+in [SECURITY.md](SECURITY.md#operating-it-securely), then run the stack from it:
+
+```bash
+docker pull ghcr.io/mojtaba-py-code/secure-ai-customer-support-platform:1.0.0
+docker tag ghcr.io/mojtaba-py-code/secure-ai-customer-support-platform:1.0.0 aegis-support:1.0.0
+docker compose up -d --no-build
+```
+
 ## Tests and quality gates
 
 Every gate at once - the same script CI runs:
