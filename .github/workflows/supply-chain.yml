@@ -5,8 +5,10 @@ name: Supply chain
 # * OpenSSF Scorecard grades the repository's supply-chain practices on every push to main and
 #   every week, and publishes the score.
 # * Every week, Trivy scans the third-party images the Compose stack runs (PostgreSQL, Redis,
-#   Qdrant) exactly as pinned. The findings go to code scanning; the fix for a fixable one is a
-#   newer pin, which Dependabot proposes.
+#   Qdrant) exactly as pinned and reports their fixable HIGH/CRITICAL findings in the job summary.
+#   They are upstream packages this repository cannot patch, so they stay out of code scanning
+#   (which holds this project's own code and image); the fix is a newer pin, which Dependabot
+#   proposes (SECURITY.md, "Third-party images").
 #
 # Dependency review and Scorecard need a public repository; on a private one they are skipped.
 
@@ -70,7 +72,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      security-events: write  # upload the results to code scanning
     strategy:
       fail-fast: false
       matrix:
@@ -90,14 +91,22 @@ jobs:
           image="$(grep -E "^[[:space:]]+image: ${REPOSITORY}" docker-compose.yml | head -n 1 | awk '{print $2}')"
           test -n "${image}"
           echo "ref=${image}" >> "$GITHUB_OUTPUT"
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+      - name: Trivy - fixable HIGH/CRITICAL findings (report)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.ref }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          format: sarif
-          output: trivy.sarif
-      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
-        with:
-          sarif_file: trivy.sarif
-          category: trivy-${{ matrix.service }}
+          format: table
+          output: trivy.txt
+      - name: Job summary
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          {
+            echo "### ${IMAGE}"
+            echo
+            echo '```text'
+            cat trivy.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

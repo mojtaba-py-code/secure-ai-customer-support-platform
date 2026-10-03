@@ -126,4 +126,10 @@ def generate_opaque_token(nbytes: int = 32) -> str:
 
 
 def hash_opaque_token(token: str) -> str:
+    """Storage form of an opaque token (session, refresh, password-reset, MFA challenge).
+
+    Only for values from :func:`generate_opaque_token` - 256 random bits, so a fast hash is the
+    right construction: there is nothing to brute-force, and lookups stay constant-time in the
+    index. Passwords never come here; they are hashed with Argon2id (:mod:`aegis.security.passwords`).
+    """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
