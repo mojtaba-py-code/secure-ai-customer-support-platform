@@ -44,6 +44,13 @@ updates:
       day: monday
     cooldown:
       default-days: 7
+    allow:
+      # Third-party images only. aegis-support is built from this repository (the
+      # docker entry tracks its base image) and Docker Hub has no repository by
+      # that name, so looking it up failed the whole docker-compose update job.
+      - dependency-name: "*/*"
+      - dependency-name: "postgres"
+      - dependency-name: "redis"
     ignore:
       # Major versions of the data services change on-disk formats; they are upgraded on purpose.
       - dependency-name: postgres
