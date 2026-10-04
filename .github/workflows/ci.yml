@@ -188,6 +188,9 @@ jobs:
           tags: ${{ env.IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Rebuild the runtime stage every time so its `apt-get upgrade` picks up new Debian
+          # security fixes instead of replaying a cached layer.
+          no-cache-filters: runtime
       - name: Image policy (unprivileged user, health check, read-only root, no pip)
         run: |
           test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = "aegis:aegis"
