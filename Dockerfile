@@ -21,8 +21,15 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim-bookworm@sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3 AS runtime
-RUN groupadd --system --gid 10001 aegis \
- && useradd --system --uid 10001 --gid aegis --home-dir /app --no-create-home --shell /usr/sbin/nologin aegis
+# `apt-get upgrade` applies the Debian security fixes published since the pinned base image was
+# built (CI never restores this stage from its cache, so every build gets them). Nothing is
+# installed on top of the base image.
+RUN set -eu; \
+    apt-get update; \
+    apt-get upgrade -y --no-install-recommends; \
+    rm -rf /var/lib/apt/lists/*; \
+    groupadd --system --gid 10001 aegis; \
+    useradd --system --uid 10001 --gid aegis --home-dir /app --no-create-home --shell /usr/sbin/nologin aegis
 WORKDIR /app
 COPY --from=build --chown=root:root /app/.venv /app/.venv
 COPY --chown=root:root migrations ./migrations
