@@ -5,6 +5,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/mojtaba-py-code/secure-ai-customer-support-platform/badge)](https://scorecard.dev/viewer/?uri=github.com/mojtaba-py-code/secure-ai-customer-support-platform)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-3776AB)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Hire me on Freelancer](https://img.shields.io/badge/Hire%20me%20on-Freelancer-29B2FE?style=flat)](https://www.freelancer.com/hireme/mojtaba2025py)
 
 **A secure, LLM-powered customer-support platform.** Customers chat with an AI assistant that
 answers from the company's knowledge base, looks up *their own* orders, payments, refunds and
